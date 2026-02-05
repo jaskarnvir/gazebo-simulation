@@ -1,0 +1,25 @@
+# General
+.DS_Store
+.idea/
+*.iml
+
+# Python / Backend
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+.env
+*.db
+*.sqlite3
+
+# Flutter
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+build/
+ios/Pods/
+.pub-cache/
+.packages
+
+# Simulation
+*.log
