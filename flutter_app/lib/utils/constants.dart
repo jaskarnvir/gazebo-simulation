@@ -1,6 +1,6 @@
 class ApiConstants {
   static const String baseUrl =
-      'https://harbourless-thankfully-tamisha.ngrok-free.app'; // Updated with ngrok HTTPS URL
+      'https://cvczd-34-172-64-198.a.free.pinggy.link'; // HTTPS Tunnel
   static const String loginEndpoint = '/token';
   static const String registerEndpoint = '/register';
   static const String userInfoEndpoint = '/users/me';
