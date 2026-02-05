@@ -1,15 +1,44 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import '../providers/robot_provider.dart';
 
-class ControlsScreen extends StatelessWidget {
+class ControlsScreen extends StatefulWidget {
   const ControlsScreen({super.key});
+
+  @override
+  State<ControlsScreen> createState() => _ControlsScreenState();
+}
+
+class _ControlsScreenState extends State<ControlsScreen> {
+  Timer? _cameraTimer;
+  int _refreshKey = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    // Refresh camera every 200ms
+    _cameraTimer = Timer.periodic(const Duration(milliseconds: 200), (timer) {
+      if (mounted) {
+        setState(() {
+          _refreshKey++;
+        });
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _cameraTimer?.cancel();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     final robotProvider = Provider.of<RobotProvider>(context);
     final isConnected = robotProvider.isConnected;
+    final snapshotUrl = robotProvider.getSnapshotUrl();
 
     return Scaffold(
       appBar: AppBar(title: const Text('Remote Control')),
@@ -40,15 +69,42 @@ class ControlsScreen extends StatelessWidget {
                   flex: 2,
                   child: Center(
                     child: Container(
-                      padding: const EdgeInsets.all(16),
+                      margin: const EdgeInsets.all(16),
                       decoration: BoxDecoration(
-                        color: Colors.black12,
+                        color: Colors.black,
                         borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: Colors.grey.shade800),
                       ),
-                      child: Text(
-                        'Camera Feed Placeholder',
-                        style: GoogleFonts.poppins(color: Colors.black54),
-                      ),
+                      clipBehavior: Clip.antiAlias,
+                      child: snapshotUrl != null
+                          ? Image.network(
+                              '$snapshotUrl?t=$_refreshKey',
+                              fit: BoxFit.cover,
+                              gaplessPlayback: true,
+                              width: double.infinity,
+                              height: double.infinity,
+                              errorBuilder: (context, error, stackTrace) {
+                                return Center(
+                                  child: Column(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      const Icon(
+                                        Icons.videocam_off,
+                                        color: Colors.white54,
+                                      ),
+                                      const SizedBox(height: 8),
+                                      Text(
+                                        'Camera Offline',
+                                        style: GoogleFonts.poppins(
+                                          color: Colors.white54,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                );
+                              },
+                            )
+                          : const Center(child: CircularProgressIndicator()),
                     ),
                   ),
                 ),
@@ -61,23 +117,36 @@ class ControlsScreen extends StatelessWidget {
                         _buildDirectionBtn(
                           Icons.arrow_upward,
                           'Forward',
-                          () {},
+                          () => robotProvider.sendMoveCommand(
+                            1.0,
+                            0.0,
+                          ), // Linear 1, Angular 0
                         ),
                         const SizedBox(height: 16),
                         Row(
                           mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                           children: [
-                            _buildDirectionBtn(Icons.arrow_back, 'Left', () {}),
+                            _buildDirectionBtn(
+                              Icons.arrow_back,
+                              'Left',
+                              () => robotProvider.sendMoveCommand(
+                                0.0,
+                                1.0,
+                              ), // Linear 0, Angular 1
+                            ),
                             _buildDirectionBtn(
                               Icons.stop,
                               'Stop',
-                              () {},
+                              () => robotProvider.sendMoveCommand(0.0, 0.0),
                               isStop: true,
                             ),
                             _buildDirectionBtn(
                               Icons.arrow_forward,
                               'Right',
-                              () {},
+                              () => robotProvider.sendMoveCommand(
+                                0.0,
+                                -1.0,
+                              ), // Linear 0, Angular -1
                             ),
                           ],
                         ),
@@ -85,7 +154,10 @@ class ControlsScreen extends StatelessWidget {
                         _buildDirectionBtn(
                           Icons.arrow_downward,
                           'Backward',
-                          () {},
+                          () => robotProvider.sendMoveCommand(
+                            -1.0,
+                            0.0,
+                          ), // Linear -1, Angular 0
                         ),
                       ],
                     ),
@@ -104,15 +176,27 @@ class ControlsScreen extends StatelessWidget {
   }) {
     return Column(
       children: [
-        ElevatedButton(
-          onPressed: onPressed,
-          style: ElevatedButton.styleFrom(
-            backgroundColor: isStop ? Colors.red.shade100 : Colors.blue.shade50,
-            foregroundColor: isStop ? Colors.red : Colors.blue,
-            shape: const CircleBorder(),
-            padding: const EdgeInsets.all(24),
+        GestureDetector(
+          onTapDown: (_) => onPressed(), // Send on press
+          onTapUp: (_) {
+            if (!isStop) {
+              // Optional: Stop on release? For now, we just invoke the command once per click
+              // or maybe we want a continuous press behavior?
+              // The request asked for commands to be sent.
+            }
+          },
+          child: ElevatedButton(
+            onPressed: onPressed,
+            style: ElevatedButton.styleFrom(
+              backgroundColor: isStop
+                  ? Colors.red.shade100
+                  : Colors.blue.shade50,
+              foregroundColor: isStop ? Colors.red : Colors.blue,
+              shape: const CircleBorder(),
+              padding: const EdgeInsets.all(24),
+            ),
+            child: Icon(icon, size: 32),
           ),
-          child: Icon(icon, size: 32),
         ),
         const SizedBox(height: 8),
         Text(label, style: const TextStyle(fontSize: 12)),

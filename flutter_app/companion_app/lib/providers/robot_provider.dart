@@ -54,4 +54,19 @@ class RobotProvider with ChangeNotifier {
     _selectedRobot = null;
     notifyListeners();
   }
+
+  Future<void> sendMoveCommand(double linear, double angular) async {
+    if (_selectedRobot == null) return;
+    await _apiService.sendRobotCommand(_selectedRobot!.id, linear, angular);
+  }
+
+  String? getCameraUrl() {
+    if (_selectedRobot == null) return null;
+    return _apiService.getRobotCameraUrl(_selectedRobot!.id);
+  }
+
+  String? getSnapshotUrl() {
+    if (_selectedRobot == null) return null;
+    return _apiService.getRobotSnapshotUrl(_selectedRobot!.id);
+  }
 }

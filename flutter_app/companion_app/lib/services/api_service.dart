@@ -87,6 +87,30 @@ class ApiService {
     }
   }
 
+  Future<void> sendRobotCommand(
+    int robotId,
+    double linearX,
+    double angularZ,
+  ) async {
+    try {
+      await _dio.post(
+        '${ApiConstants.baseUrl}/robots/$robotId/command',
+        data: {'linear_x': linearX, 'angular_z': angularZ},
+      );
+    } catch (e) {
+      print('Failed to send command: $e');
+      // Don't throw for controls to keep UI responsive, just log
+    }
+  }
+
+  String getRobotCameraUrl(int robotId) {
+    return '${ApiConstants.baseUrl}/robots/$robotId/camera';
+  }
+
+  String getRobotSnapshotUrl(int robotId) {
+    return '${ApiConstants.baseUrl}/robots/$robotId/camera/snapshot';
+  }
+
   Future<void> logout() async {
     await _storage.delete(key: 'auth_token');
   }
