@@ -4,14 +4,15 @@ import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../providers/auth_provider.dart';
 
-class LoginScreen extends StatefulWidget {
-  const LoginScreen({super.key});
+class RegisterScreen extends StatefulWidget {
+  const RegisterScreen({super.key});
 
   @override
-  State<LoginScreen> createState() => _LoginScreenState();
+  State<RegisterScreen> createState() => _RegisterScreenState();
 }
 
-class _LoginScreenState extends State<LoginScreen> {
+class _RegisterScreenState extends State<RegisterScreen> {
+  final _nameController = TextEditingController();
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   final _formKey = GlobalKey<FormState>();
@@ -21,6 +22,7 @@ class _LoginScreenState extends State<LoginScreen> {
     final authProvider = Provider.of<AuthProvider>(context);
 
     return Scaffold(
+      appBar: AppBar(title: const Text('Create Account')),
       body: Center(
         child: SingleChildScrollView(
           padding: const EdgeInsets.all(24.0),
@@ -31,7 +33,7 @@ class _LoginScreenState extends State<LoginScreen> {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 Text(
-                  'Welcome Back',
+                  'Join Us',
                   style: GoogleFonts.poppins(
                     fontSize: 32,
                     fontWeight: FontWeight.bold,
@@ -40,6 +42,21 @@ class _LoginScreenState extends State<LoginScreen> {
                   textAlign: TextAlign.center,
                 ),
                 const SizedBox(height: 48),
+                TextFormField(
+                  controller: _nameController,
+                  decoration: const InputDecoration(
+                    labelText: 'Full Name',
+                    border: OutlineInputBorder(),
+                    prefixIcon: Icon(Icons.person),
+                  ),
+                  validator: (value) {
+                    if (value == null || value.isEmpty) {
+                      return 'Please enter your name';
+                    }
+                    return null;
+                  },
+                ),
+                const SizedBox(height: 16),
                 TextFormField(
                   controller: _emailController,
                   decoration: const InputDecoration(
@@ -67,6 +84,9 @@ class _LoginScreenState extends State<LoginScreen> {
                     if (value == null || value.isEmpty) {
                       return 'Please enter your password';
                     }
+                    if (value.length < 6) {
+                      return 'Password must be at least 6 characters';
+                    }
                     return null;
                   },
                 ),
@@ -77,19 +97,27 @@ class _LoginScreenState extends State<LoginScreen> {
                       : () async {
                           if (_formKey.currentState!.validate()) {
                             try {
-                              await authProvider.login(
+                              await authProvider.register(
                                 _emailController.text,
                                 _passwordController.text,
+                                _nameController.text,
                               );
                               if (context.mounted) {
-                                context.go('/');
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                    content: Text(
+                                      'Registration successful! Please login.',
+                                    ),
+                                  ),
+                                );
+                                context.go('/login');
                               }
                             } catch (e) {
                               if (context.mounted) {
                                 ScaffoldMessenger.of(context).showSnackBar(
                                   SnackBar(
                                     content: Text(
-                                      'Login failed: ${e.toString()}',
+                                      'Registration failed: ${e.toString()}',
                                     ),
                                   ),
                                 );
@@ -103,14 +131,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   ),
                   child: authProvider.isLoading
                       ? const CircularProgressIndicator()
-                      : const Text('Login'),
-                ),
-                const SizedBox(height: 16),
-                TextButton(
-                  onPressed: () {
-                    context.go('/register');
-                  },
-                  child: const Text('Create an Account'),
+                      : const Text('Register'),
                 ),
               ],
             ),
