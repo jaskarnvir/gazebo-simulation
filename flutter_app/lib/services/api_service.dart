@@ -15,6 +15,7 @@ class ApiService {
           if (token != null) {
             options.headers['Authorization'] = 'Bearer $token';
           }
+          options.headers['ngrok-skip-browser-warning'] = 'true';
           return handler.next(options);
         },
       ),
