@@ -11,5 +11,5 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . ./backend
 
 # Run uvicorn from /app, targeting the backend package
-# Cloud Run injects the PORT environment variable, usually 8080
-CMD ["uvicorn", "backend.main:app", "--host", "0.0.0.0", "--port", "8080"]
+# Cloud Run injects the PORT environment variable
+CMD ["sh", "-c", "uvicorn backend.main:app --host 0.0.0.0 --port ${PORT:-8080}"]

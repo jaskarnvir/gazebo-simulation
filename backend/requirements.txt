@@ -4,6 +4,6 @@ pydantic
 python-multipart
 python-jose[cryptography]
 passlib[bcrypt]
-bcrypt==3.2.2
+bcrypt
 sqlalchemy
 pillow
