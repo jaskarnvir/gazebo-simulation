@@ -1,6 +1,7 @@
 import 'package:dio/dio.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import '../utils/constants.dart';
+import '../models/robot_model.dart';
 
 class ApiService {
   final Dio _dio = Dio(BaseOptions(baseUrl: ApiConstants.baseUrl));
@@ -60,7 +61,66 @@ class ApiService {
     }
   }
 
+  Future<List<Robot>> getRobots() async {
+    try {
+      final response = await _dio.get('${ApiConstants.baseUrl}/robots/');
+      final List<dynamic> data = response.data;
+      return data.map((json) => Robot.fromJson(json)).toList();
+    } catch (e) {
+      throw Exception('Failed to fetch robots: $e');
+    }
+  }
+
+  Future<Robot> registerRobot(String name, String serialNumber) async {
+    try {
+      final response = await _dio.post(
+        '${ApiConstants.baseUrl}/robots/',
+        data: {
+          'name': name,
+          'serial_number': serialNumber,
+          'model_type': 'MiRo-e', // Default for now
+        },
+      );
+      return Robot.fromJson(response.data);
+    } catch (e) {
+      throw Exception('Failed to register robot: $e');
+    }
+  }
+
   Future<void> logout() async {
     await _storage.delete(key: 'auth_token');
+  }
+
+  // Emergency
+  Future<List<dynamic>> getEmergencyContacts() async {
+    try {
+      final response = await _dio.get('${ApiConstants.baseUrl}/emergency/');
+      return response.data;
+    } catch (e) {
+      throw Exception('Failed to fetch contacts: $e');
+    }
+  }
+
+  Future<void> addEmergencyContact(
+    String name,
+    String phone,
+    String relation,
+  ) async {
+    try {
+      await _dio.post(
+        '${ApiConstants.baseUrl}/emergency/',
+        data: {'name': name, 'phone_number': phone, 'relation': relation},
+      );
+    } catch (e) {
+      throw Exception('Failed to add contact: $e');
+    }
+  }
+
+  Future<void> triggerEmergency() async {
+    try {
+      await _dio.post('${ApiConstants.baseUrl}/emergency/trigger');
+    } catch (e) {
+      throw Exception('Failed to trigger emergency: $e');
+    }
   }
 }

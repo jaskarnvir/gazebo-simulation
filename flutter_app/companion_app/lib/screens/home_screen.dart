@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../providers/auth_provider.dart';
+import '../providers/robot_provider.dart';
 
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
@@ -10,6 +11,7 @@ class HomeScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final authProvider = Provider.of<AuthProvider>(context);
+    final robotProvider = Provider.of<RobotProvider>(context);
     final user = authProvider.user;
 
     return Scaffold(
@@ -40,7 +42,7 @@ class HomeScreen extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 20),
-            _buildStatusCard(context),
+            _buildStatusCard(context, robotProvider),
             const SizedBox(height: 20),
             Expanded(
               child: GridView.count(
@@ -56,6 +58,7 @@ class HomeScreen extends StatelessWidget {
                     iconColor: Colors.red,
                     onTap: () {
                       // Navigate to Emergency
+                      context.push('/emergency');
                     },
                   ),
                   _buildFeatureCard(
@@ -66,6 +69,7 @@ class HomeScreen extends StatelessWidget {
                     iconColor: Colors.blue,
                     onTap: () {
                       // Navigate to Pairing
+                      context.push('/pairing');
                     },
                   ),
                   _buildFeatureCard(
@@ -76,6 +80,7 @@ class HomeScreen extends StatelessWidget {
                     iconColor: Colors.green,
                     onTap: () {
                       // Navigate to Simulation Controls
+                      context.push('/controls');
                     },
                   ),
                   _buildFeatureCard(
@@ -86,6 +91,7 @@ class HomeScreen extends StatelessWidget {
                     iconColor: Colors.grey,
                     onTap: () {
                       // Navigate to Settings
+                      context.push('/settings');
                     },
                   ),
                 ],
@@ -97,38 +103,53 @@ class HomeScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildStatusCard(BuildContext context) {
-    return Card(
-      elevation: 4,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      child: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: Colors.orange.shade100,
-                shape: BoxShape.circle,
-              ),
-              child: const Icon(
-                Icons.smart_toy,
-                color: Colors.orange,
-                size: 32,
-              ),
-            ),
-            const SizedBox(width: 16),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('Robot Status', style: TextStyle(color: Colors.grey[600])),
-                const Text(
-                  'Disconnected',
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+  Widget _buildStatusCard(BuildContext context, RobotProvider robotProvider) {
+    final isConnected = robotProvider.isConnected;
+    final robotName = robotProvider.selectedRobot?.name ?? 'Disconnected';
+
+    return GestureDetector(
+      onTap: () => context.push('/pairing'),
+      child: Card(
+        elevation: 4,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        color: isConnected ? Colors.green.shade50 : null,
+        child: Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: isConnected
+                      ? Colors.green.shade100
+                      : Colors.orange.shade100,
+                  shape: BoxShape.circle,
                 ),
-              ],
-            ),
-          ],
+                child: Icon(
+                  Icons.smart_toy,
+                  color: isConnected ? Colors.green : Colors.orange,
+                  size: 32,
+                ),
+              ),
+              const SizedBox(width: 16),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Robot Status',
+                    style: TextStyle(color: Colors.grey[600]),
+                  ),
+                  Text(
+                    isConnected ? 'Connected to $robotName' : 'Disconnected',
+                    style: const TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
         ),
       ),
     );
