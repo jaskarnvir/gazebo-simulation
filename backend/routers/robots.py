@@ -1,9 +1,10 @@
-from fastapi import APIRouter, Depends, HTTPException, Response
+from fastapi import APIRouter, Depends, HTTPException, Response, File, UploadFile
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from typing import List, Optional
 import time
 import io
+from PIL import Image, ImageDraw
 from .. import database, schemas, models, auth
 
 class RobotCommand(schemas.BaseModel):
@@ -14,6 +15,10 @@ router = APIRouter(
     prefix="/robots",
     tags=["Robots"]
 )
+
+# In-memory storage for the latest frame of each robot
+# robot_id -> bytes
+latest_frames = {}
 
 @router.post("/", response_model=schemas.Robot)
 def register_robot(robot: schemas.RobotCreate, current_user: schemas.User = Depends(auth.get_current_user), db: Session = Depends(database.get_db)):
@@ -47,49 +52,30 @@ def send_command(robot_id: int, command: RobotCommand, current_user: schemas.Use
     print(f"COMMAND to Robot {robot_id}: Linear={command.linear_x}, Angular={command.angular_z}")
     return {"status": "sent", "command": command}
 
-def generate_mock_camera_feed():
-    # Helper to generate a fake MJPEG stream
-    # Creates simple colored frames
-    from PIL import Image, ImageDraw
-    import random
-    
-    width, height = 640, 480
-    while True:
-        # Create a new image with random color
-        color = (random.randint(0, 255), random.randint(0, 255), random.randint(0, 255))
-        img = Image.new('RGB', (width, height), color=color)
-        d = ImageDraw.Draw(img)
-        d.text((10, 10), f"Timestamp: {time.time()}", fill=(255, 255, 255))
-        
-        # Convert to bytes
-        img_byte_arr = io.BytesIO()
-        img.save(img_byte_arr, format='JPEG')
-        img_bytes = img_byte_arr.getvalue()
-        
-        yield (b'--frame\r\n'
-               b'Content-Type: image/jpeg\r\n\r\n' + img_bytes + b'\r\n')
-        time.sleep(0.1) # 10 FPS
+@router.post("/{robot_id}/camera")
+async def upload_camera_frame(robot_id: int, file: UploadFile = File(...)):
+    """Receives a camera frame from the robot and stores it in memory."""
+    contents = await file.read()
+    latest_frames[robot_id] = contents
+    return {"status": "frame_received"}
 
-@router.get("/{robot_id}/camera")
-def get_camera_feed(robot_id: int):
-    # Returns a multipart MJPEG stream
-    return StreamingResponse(generate_mock_camera_feed(), media_type="multipart/x-mixed-replace; boundary=frame")
+def get_offline_image():
+    """Generates a black 'Camera Offline' placeholder image."""
+    width, height = 640, 480
+    img = Image.new('RGB', (width, height), color='black')
+    d = ImageDraw.Draw(img)
+    d.text((width//2 - 40, height//2), "NO SIGNAL", fill=(255, 255, 255))
+    
+    img_byte_arr = io.BytesIO()
+    img.save(img_byte_arr, format='JPEG')
+    return img_byte_arr.getvalue()
 
 @router.get("/{robot_id}/camera/snapshot")
 def get_camera_snapshot(robot_id: int):
-    # Returns a single JPEG frame
-    from PIL import Image, ImageDraw
-    import random
-    import io
+    """Returns the latest frame for the robot, or an offline placeholder."""
+    frame_data = latest_frames.get(robot_id)
     
-    width, height = 640, 480
-    color = (random.randint(0, 255), random.randint(0, 255), random.randint(0, 255))
-    img = Image.new('RGB', (width, height), color=color)
-    d = ImageDraw.Draw(img)
-    d.text((10, 10), f"Snapshot: {time.time()}", fill=(255, 255, 255))
+    if frame_data is None:
+        frame_data = get_offline_image()
         
-    img_byte_arr = io.BytesIO()
-    img.save(img_byte_arr, format='JPEG')
-    img_byte_arr.seek(0)
-    
-    return StreamingResponse(io.BytesIO(img_byte_arr.getvalue()), media_type="image/jpeg")
+    return StreamingResponse(io.BytesIO(frame_data), media_type="image/jpeg")

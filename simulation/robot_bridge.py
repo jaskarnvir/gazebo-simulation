@@ -1,51 +1,79 @@
 import requests
 import time
-import random
+import cv2
+import threading
 import sys
 
 # Configuration
-API_URL = "http://127.0.0.1:8000"
-ROBOT_ID = 1 # Assume we are robot #1
+# Use the Cloud Run URL or localhost if testing locally
+API_URL = "https://gazebo-simulation-540735931660.us-central1.run.app" 
+ROBOT_ID = 1 
 SERIAL_NUMBER = "MIRO-12345"
-
-def register_if_needed():
-    # In a real scenario, the robot wouldn't register itself this way, but for simulation:
-    # We can't easily register without a user token. 
-    # So we assume the user has already paired (registered) the robot via the App.
-    print(f"Robot {SERIAL_NUMBER} starting up...")
 
 def send_heartbeat(is_online: bool):
     try:
         url = f"{API_URL}/robots/{ROBOT_ID}/status?is_online={str(is_online).lower()}"
         response = requests.post(url)
-        if response.status_code == 200:
-            print(f"Heartbeat sent: Online={is_online}")
-        else:
-            print(f"Failed to send heartbeat: {response.status_code}")
+        # print(f"Heartbeat: {response.status_code}") # Verbose
     except Exception as e:
-        print(f"Connection error: {e}")
+        print(f"Heartbeat error: {e}")
+
+def upload_frame(frame):
+    try:
+        # Encode frame to JPEG
+        _, img_encoded = cv2.imencode('.jpg', frame, [int(cv2.IMWRITE_JPEG_QUALITY), 70])
+        files = {'file': ('frame.jpg', img_encoded.tobytes(), 'image/jpeg')}
+        
+        url = f"{API_URL}/robots/{ROBOT_ID}/camera"
+        requests.post(url, files=files, timeout=2) # Short timeout to update fast
+    except Exception as e:
+        print(f"Frame upload error: {e}")
 
 def main():
-    print("Starting Robot Simulation Bridge...")
-    # Simulate connection to ROS
-    print("Connecting to ROS Master... [MOCKED]")
-    time.sleep(2)
-    print("Connected to ROS.")
+    print(f"🚀 Connecting Robot {ROBOT_ID} to {API_URL}")
     
-    # Main Loop
+    # 1. Initialize Camera (0 is usually the default webcam)
+    print("📷 Initializing Camera...")
+    cap = cv2.VideoCapture(0)
+    
+    if not cap.isOpened():
+        print("❌ Could not open webcam. Ensure permission is granted.")
+        return
+
+    print("✅ Camera active. Streaming to cloud...")
+    
+    send_heartbeat(True)
+    
+    last_heartbeat = 0
+    
     try:
         while True:
-            # Simulate some internal state check
-            battery = random.randint(20, 100)
-            print(f"Robot Status: Battery={battery}% | Sensors=OK")
+            ret, frame = cap.read()
+            if not ret:
+                print("Failed to grab frame")
+                continue
+
+            # Resize to reduce bandwidth (optional, 640x480 is good)
+            frame = cv2.resize(frame, (640, 480))
             
-            # Update Backend
-            send_heartbeat(True)
+            # Upload Frame
+            upload_frame(frame)
             
-            time.sleep(5)
+            # Send Heartbeat every 10 seconds
+            if time.time() - last_heartbeat > 10:
+                send_heartbeat(True)
+                last_heartbeat = time.time()
+                print("💓 Heartbeat sent")
+            
+            # Limit FPS to ~10 to save bandwidth
+            time.sleep(0.1)
+            
     except KeyboardInterrupt:
-        print("Shutting down...")
+        print("\nStopping...")
+    finally:
+        cap.release()
         send_heartbeat(False)
+        print("Robot Disconnected.")
 
 if __name__ == "__main__":
     main()
