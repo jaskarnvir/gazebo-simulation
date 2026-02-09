@@ -18,8 +18,8 @@ class _ControlsScreenState extends State<ControlsScreen> {
   @override
   void initState() {
     super.initState();
-    // Refresh camera every 200ms
-    _cameraTimer = Timer.periodic(const Duration(milliseconds: 200), (timer) {
+    // Refresh camera every 50ms (~20 FPS) to match backend
+    _cameraTimer = Timer.periodic(const Duration(milliseconds: 50), (timer) {
       if (mounted) {
         setState(() {
           _refreshKey++;
@@ -79,8 +79,9 @@ class _ControlsScreenState extends State<ControlsScreen> {
                       child: snapshotUrl != null
                           ? Image.network(
                               '$snapshotUrl?t=$_refreshKey',
+                              key: ValueKey(_refreshKey), // Force rebuild
                               fit: BoxFit.cover,
-                              gaplessPlayback: true,
+                              gaplessPlayback: true, // Prevents flickering
                               width: double.infinity,
                               height: double.infinity,
                               errorBuilder: (context, error, stackTrace) {

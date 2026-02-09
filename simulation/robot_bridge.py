@@ -6,8 +6,8 @@ import sys
 
 # Configuration
 # Use the Cloud Run URL or localhost if testing locally
-API_URL = "https://gazebo-simulation-540735931660.us-central1.run.app" 
-ROBOT_ID = 1 
+API_URL = "http://34.172.64.198:8000" 
+ROBOT_ID = 3 
 SERIAL_NUMBER = "MIRO-12345"
 
 def send_heartbeat(is_online: bool):
@@ -20,12 +20,12 @@ def send_heartbeat(is_online: bool):
 
 def upload_frame(frame):
     try:
-        # Encode frame to JPEG
-        _, img_encoded = cv2.imencode('.jpg', frame, [int(cv2.IMWRITE_JPEG_QUALITY), 70])
+        # Encode frame to JPEG (lower quality 50 for speed)
+        _, img_encoded = cv2.imencode('.jpg', frame, [int(cv2.IMWRITE_JPEG_QUALITY), 50])
         files = {'file': ('frame.jpg', img_encoded.tobytes(), 'image/jpeg')}
         
         url = f"{API_URL}/robots/{ROBOT_ID}/camera"
-        requests.post(url, files=files, timeout=2) # Short timeout to update fast
+        requests.post(url, files=files, timeout=5) # Timeout increased to 5s
     except Exception as e:
         print(f"Frame upload error: {e}")
 
@@ -53,20 +53,21 @@ def main():
                 print("Failed to grab frame")
                 continue
 
-            # Resize to reduce bandwidth (optional, 640x480 is good)
-            frame = cv2.resize(frame, (640, 480))
+            # Resize to reduce bandwidth (320x240 is better for cloud HTTP)
+            frame = cv2.resize(frame, (320, 240))
             
             # Upload Frame
             upload_frame(frame)
+            print(".", end="", flush=True) # visual feedback
             
             # Send Heartbeat every 10 seconds
             if time.time() - last_heartbeat > 10:
+                print("\n💓 Heartbeat sent")
                 send_heartbeat(True)
                 last_heartbeat = time.time()
-                print("💓 Heartbeat sent")
             
-            # Limit FPS to ~10 to save bandwidth
-            time.sleep(0.1)
+            # Limit FPS (0.05 = ~20 FPS max)
+            time.sleep(0.05)
             
     except KeyboardInterrupt:
         print("\nStopping...")
