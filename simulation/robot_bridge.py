@@ -144,76 +144,62 @@ def parse_gazebo_stream(topic):
     except Exception as e:
         print(f"❌ Error reading Gazebo stream: {e}", flush=True)
 
-gz_process = None
+cmd_execution_thread = None
 
-def log_subprocess_output(process, topic):
-    """Reads output from the persistent publisher process."""
-    try:
-        for line in iter(process.stdout.readline, ''):
-            if line.strip():
-                print(f"[{topic}]: {line.strip()}")
-        process.stdout.close()
-    except Exception:
-        pass
-
-def start_gz_publisher(topic):
-    global gz_process
-    cmd = ["gz", "topic", "-t", topic, "-m", "gz.msgs.Twist", "-p"]
+def _run_gz_cmd(topic, linear, angular):
+    """Helper to run the blocking subprocess call in a thread."""
+    # Strict formatting for the protobuf text message
+    msg = f"linear: {{x: {linear}}}, angular: {{z: {angular}}}"
     
-    # NOTE: The '-p' flag without arguments makes gz wait for input on stdin
+    cmd = ["gz", "topic", "-t", topic, "-m", "gz.msgs.Twist", "-p", msg]
     
     try:
-        # bufsize=0 (unbuffered) is crucial for real-time control
-        gz_process = subprocess.Popen(
-            cmd, 
-            stdin=subprocess.PIPE, 
-            stdout=subprocess.PIPE, 
-            stderr=subprocess.STDOUT, 
-            text=True, 
-            bufsize=0
-        )
-        
-        # Start a thread to read output so buffers don't fill up
-        t = threading.Thread(target=log_subprocess_output, args=(gz_process, topic), daemon=True)
-        t.start()
-        
-        print(f"✅ Started persistent publisher for {topic}", flush=True)
+        # Timeout set to 2s to allow gz some time, but fail if stuck
+        result = subprocess.run(cmd, timeout=2.0, capture_output=True, text=True)
+        if result.returncode != 0:
+             print(f"❌ Gz Error ({topic}): {result.stderr.strip()}", flush=True)
+    except subprocess.TimeoutExpired:
+        print(f"⚠️ Cmd Timer: {topic}", flush=True)
     except Exception as e:
-        print(f"❌ Failed to start publisher: {e}", flush=True)
+        print(f"❌ Cmd Exception: {e}", flush=True)
 
 def execute_gz_command(linear, angular):
-    global gz_process
+    global cmd_execution_thread
     
-    # Determine topic (same logic as before)
-    robot_name = args.robot_name if args.robot_name else "vehicle_blue"
-    if not args.robot_name:
-        with sim_lock:
-            for name in sim_objects.keys():
-                if "vehicle" in name:
-                    robot_name = name
-                    break
-    
-    topic = args.cmd_topic if args.cmd_topic else f"/model/{robot_name}/cmd_vel"
-
-    # Start publisher if not running
-    if gz_process is None or gz_process.poll() is not None:
-        start_gz_publisher(topic)
-
-    # Format for Gazebo Twist message
-    # IMPORTANT: The message structure must be exact for protobuf text format
-    msg = f"linear: {{x: {linear}}}, angular: {{z: {angular}}}\n"
-    
-    try:
-        if gz_process:
-            gz_process.stdin.write(msg)
-            gz_process.stdin.flush()
-            # print(f"Sent to {topic}: {msg.strip()}")
+    # Priority 1: Manual Topic Override
+    if args.cmd_topic:
+        topic = args.cmd_topic
+    else:
+        # Priority 2: Manual Robot Name Override
+        robot_name = args.robot_name
+        
+        # Priority 3: Auto-Discovery
+        if not robot_name:
+             with sim_lock:
+                keys = sim_objects.keys()
+                # Prefer 'vehicle_blue' by default for this specific user scenario
+                if "vehicle_blue" in keys:
+                    robot_name = "vehicle_blue"
+                else:
+                    # Pick the first one containing 'vehicle'
+                    for name in keys:
+                        if "vehicle" in name:
+                            robot_name = name
+                            break
+        
+        if not robot_name:
+            robot_name = "vehicle_blue" # Final Fallback
             
-    except (BrokenPipeError, IOError):
-        print("⚠️ Publisher pipe broken, restarting...", flush=True)
-        gz_process = None
-    except Exception as e:
-        print(f"❌ Publish error: {e}", flush=True)
+        topic = f"/model/{robot_name}/cmd_vel"
+
+    # Only start a new thread if the previous one is done (throttle + non-blocking)
+    if cmd_execution_thread is None or not cmd_execution_thread.is_alive():
+        cmd_execution_thread = threading.Thread(
+            target=_run_gz_cmd, 
+            args=(topic, linear, angular),
+            daemon=True
+        )
+        cmd_execution_thread.start()
 
 last_command = (0.0, 0.0)
 last_cmd_send_time = 0
