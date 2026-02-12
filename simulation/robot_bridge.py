@@ -94,10 +94,9 @@ def parse_gazebo_stream(topic):
                 reading_position = False
                 continue
                 
-            if "orientation {" in line:
-                reading_position = False
-                # End of position block for this object
                 if 'name' in current_object and 'x' in current_object:
+                    # debug print
+                    # print(f"Updates {current_object['name']}")
                     with sim_lock:
                         sim_objects[current_object['name']] = current_object.copy()
                 continue
@@ -173,6 +172,9 @@ def draw_simulation_frame():
     
     with sim_lock:
         objects = sim_objects.copy()
+        
+    # Debug: Print object count on screen
+    cv2.putText(frame, f"Objects: {len(objects)}", (10, 460), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1)
     
     # Draw logic
     for name, data in objects.items():
