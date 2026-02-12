@@ -147,13 +147,16 @@ def fetch_and_execute_command():
             linear = data.get('linear_x', 0.0)
             angular = data.get('angular_z', 0.0)
             
-            # Only send if changed allows for smoother operation if holding button
-            # But the app sends explicit commands. 
-            # Let's send it.
+            # Always send the command to keep the robot moving (safety timeout handling)
+            # Only print if changed to avoid log spam
             if (linear, angular) != last_command:
                 print(f"🚗 Moving: Linear={linear}, Angular={angular}")
-                execute_gz_command(linear, angular)
                 last_command = (linear, angular)
+            
+            # Executing gz topic every loop (100ms) might be heavy but is necessary 
+            # for continuous movement if the robot has a safety timeout.
+            # Ideally we'd keep a publisher process open.
+            execute_gz_command(linear, angular)
                 
     except Exception as e:
         print(f"Command fetch error: {e}")
