@@ -146,15 +146,40 @@ def parse_gazebo_stream(topic):
 
 gz_process = None
 
+def log_subprocess_output(process, topic):
+    """Reads output from the persistent publisher process."""
+    try:
+        for line in iter(process.stdout.readline, ''):
+            if line.strip():
+                print(f"[{topic}]: {line.strip()}")
+        process.stdout.close()
+    except Exception:
+        pass
+
 def start_gz_publisher(topic):
     global gz_process
-    cmd = ["gz", "topic", "-t", topic, "-m", "gz.msgs.Twist"]
+    cmd = ["gz", "topic", "-t", topic, "-m", "gz.msgs.Twist", "-p"]
+    
+    # NOTE: The '-p' flag without arguments makes gz wait for input on stdin
+    
     try:
-        # Start a persistent process that listens for messages on stdin
-        gz_process = subprocess.Popen(cmd, stdin=subprocess.PIPE, text=True, bufsize=0)
-        print(f"✅ Started persistent publisher for {topic}")
+        # bufsize=0 (unbuffered) is crucial for real-time control
+        gz_process = subprocess.Popen(
+            cmd, 
+            stdin=subprocess.PIPE, 
+            stdout=subprocess.PIPE, 
+            stderr=subprocess.STDOUT, 
+            text=True, 
+            bufsize=0
+        )
+        
+        # Start a thread to read output so buffers don't fill up
+        t = threading.Thread(target=log_subprocess_output, args=(gz_process, topic), daemon=True)
+        t.start()
+        
+        print(f"✅ Started persistent publisher for {topic}", flush=True)
     except Exception as e:
-        print(f"❌ Failed to start publisher: {e}")
+        print(f"❌ Failed to start publisher: {e}", flush=True)
 
 def execute_gz_command(linear, angular):
     global gz_process
@@ -174,18 +199,21 @@ def execute_gz_command(linear, angular):
     if gz_process is None or gz_process.poll() is not None:
         start_gz_publisher(topic)
 
+    # Format for Gazebo Twist message
+    # IMPORTANT: The message structure must be exact for protobuf text format
     msg = f"linear: {{x: {linear}}}, angular: {{z: {angular}}}\n"
     
     try:
         if gz_process:
             gz_process.stdin.write(msg)
             gz_process.stdin.flush()
-            # print(f"Sent: {msg.strip()}")
+            # print(f"Sent to {topic}: {msg.strip()}")
+            
     except (BrokenPipeError, IOError):
-        print("⚠️ Publisher pipe broken, restarting...")
+        print("⚠️ Publisher pipe broken, restarting...", flush=True)
         gz_process = None
     except Exception as e:
-        print(f"❌ Publish error: {e}")
+        print(f"❌ Publish error: {e}", flush=True)
 
 last_command = (0.0, 0.0)
 last_cmd_send_time = 0
