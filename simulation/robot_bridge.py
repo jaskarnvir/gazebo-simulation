@@ -144,15 +144,23 @@ def parse_gazebo_stream(topic):
     except Exception as e:
         print(f"❌ Error reading Gazebo stream: {e}", flush=True)
 
+gz_process = None
+
+def start_gz_publisher(topic):
+    global gz_process
+    cmd = ["gz", "topic", "-t", topic, "-m", "gz.msgs.Twist"]
+    try:
+        # Start a persistent process that listens for messages on stdin
+        gz_process = subprocess.Popen(cmd, stdin=subprocess.PIPE, text=True, bufsize=0)
+        print(f"✅ Started persistent publisher for {topic}")
+    except Exception as e:
+        print(f"❌ Failed to start publisher: {e}")
+
 def execute_gz_command(linear, angular):
-    """
-    Publishes a twist message to /model/<robot_name>/cmd_vel using gz topic.
-    Message format for gz.msgs.Twist:
-    "linear: {x: 1.0}, angular: {z: 0.5}"
-    """
-    # Attempt to use provided robot name or find one
-    robot_name = args.robot_name if args.robot_name else "vehicle_blue" # Default
+    global gz_process
     
+    # Determine topic (same logic as before)
+    robot_name = args.robot_name if args.robot_name else "vehicle_blue"
     if not args.robot_name:
         with sim_lock:
             for name in sim_objects.keys():
@@ -160,28 +168,24 @@ def execute_gz_command(linear, angular):
                     robot_name = name
                     break
     
-    if args.cmd_topic:
-        topic = args.cmd_topic
-    else:
-        topic = f"/model/{robot_name}/cmd_vel"
-    
-    cmd = [
-        "gz", "topic", "-t", topic, "-m", "gz.msgs.Twist", "-p",
-        f"linear: {{x: {linear}}}, angular: {{z: {angular}}}"
-    ]
-    try:
-        # Run and capture output for debugging
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=1.0)
-        
-        if result.returncode != 0:
-            print(f"❌ Gazebo Error ({topic}): {result.stderr.strip()}")
-        # else:
-        #     print(f"✅ Sent {linear},{angular} to {topic}")
+    topic = args.cmd_topic if args.cmd_topic else f"/model/{robot_name}/cmd_vel"
 
-    except subprocess.TimeoutExpired:
-        print(f"⚠️ Command timed out: {topic}")
+    # Start publisher if not running
+    if gz_process is None or gz_process.poll() is not None:
+        start_gz_publisher(topic)
+
+    msg = f"linear: {{x: {linear}}}, angular: {{z: {angular}}}\n"
+    
+    try:
+        if gz_process:
+            gz_process.stdin.write(msg)
+            gz_process.stdin.flush()
+            # print(f"Sent: {msg.strip()}")
+    except (BrokenPipeError, IOError):
+        print("⚠️ Publisher pipe broken, restarting...")
+        gz_process = None
     except Exception as e:
-        print(f"❌ Error sending gz command: {e}")
+        print(f"❌ Publish error: {e}")
 
 last_command = (0.0, 0.0)
 last_cmd_send_time = 0
@@ -196,19 +200,14 @@ def fetch_and_execute_command():
             linear = data.get('linear_x', 0.0)
             angular = data.get('angular_z', 0.0)
             
-            current_command = (linear, angular)
-            
-            # Logic: Send command if it changed, OR if 0.5s has passed (keep-alive for safety timeout)
-            # This prevents spawning a process every 0.1s which chokes the CPU/Gazebo
-            should_send = (current_command != last_command) or (time.time() - last_cmd_send_time > 0.5)
-            
-            if current_command != last_command:
+            # Send duplicate commands every 200ms to keep robot alive
+            # But only print if changed
+            if (linear, angular) != last_command:
                 print(f"🚗 Moving: Linear={linear}, Angular={angular}")
-                last_command = current_command
+                last_command = (linear, angular)
             
-            if should_send:
-                execute_gz_command(linear, angular)
-                last_cmd_send_time = time.time()
+            # Always send to persistent process
+            execute_gz_command(linear, angular)
                 
     except Exception as e:
         print(f"Command fetch error: {e}")
