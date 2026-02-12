@@ -184,9 +184,10 @@ def execute_gz_command(linear, angular):
         print(f"❌ Error sending gz command: {e}")
 
 last_command = (0.0, 0.0)
+last_cmd_send_time = 0
 
 def fetch_and_execute_command():
-    global last_command
+    global last_command, last_cmd_send_time
     try:
         url = f"{API_URL}/robots/{ROBOT_ID}/command"
         resp = requests.get(url, timeout=1)
@@ -195,16 +196,19 @@ def fetch_and_execute_command():
             linear = data.get('linear_x', 0.0)
             angular = data.get('angular_z', 0.0)
             
-            # Always send the command to keep the robot moving (safety timeout handling)
-            # Only print if changed to avoid log spam
-            if (linear, angular) != last_command:
-                print(f"🚗 Moving: Linear={linear}, Angular={angular}")
-                last_command = (linear, angular)
+            current_command = (linear, angular)
             
-            # Executing gz topic every loop (100ms) might be heavy but is necessary 
-            # for continuous movement if the robot has a safety timeout.
-            # Ideally we'd keep a publisher process open.
-            execute_gz_command(linear, angular)
+            # Logic: Send command if it changed, OR if 0.5s has passed (keep-alive for safety timeout)
+            # This prevents spawning a process every 0.1s which chokes the CPU/Gazebo
+            should_send = (current_command != last_command) or (time.time() - last_cmd_send_time > 0.5)
+            
+            if current_command != last_command:
+                print(f"🚗 Moving: Linear={linear}, Angular={angular}")
+                last_command = current_command
+            
+            if should_send:
+                execute_gz_command(linear, angular)
+                last_cmd_send_time = time.time()
                 
     except Exception as e:
         print(f"Command fetch error: {e}")
