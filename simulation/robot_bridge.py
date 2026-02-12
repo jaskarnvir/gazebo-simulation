@@ -15,7 +15,7 @@ parser.add_argument("--local", action="store_true", help="Use local API URL")
 parser.add_argument("--ip", type=str, default="40.233.116.73", help="Server IP address")
 parser.add_argument("--port", type=str, default="8000", help="Server port")
 parser.add_argument("--sim", action="store_true", help="Run in simulation mode (Gazebo)")
-parser.add_argument("--topic", type=str, default="/world/shapes/pose/info", help="Gazebo topic to subscribe to")
+parser.add_argument("--topic", type=str, default="/world/diff_drive/pose/info", help="Gazebo topic to subscribe to")
 parser.add_argument("--id", type=int, default=3, help="Robot ID to use")
 args = parser.parse_args()
 
@@ -119,18 +119,19 @@ def parse_gazebo_stream(topic):
 
 def execute_gz_command(linear, angular):
     """
-    Publishes a twist message to /cmd_vel using gz topic.
-    Message format for geometry_msgs/Twist:
+    Publishes a twist message to /model/vehicle_blue/cmd_vel using gz topic.
+    Message format for gz.msgs.Twist:
     "linear: {x: 1.0}, angular: {z: 0.5}"
     """
+    # TOPIC for the Blue Robot
+    topic = "/model/vehicle_blue/cmd_vel" 
+    
     cmd = [
-        "gz", "topic", "-t", "/cmd_vel", "-m", "gz.msgs.Twist", "-p",
+        "gz", "topic", "-t", topic, "-m", "gz.msgs.Twist", "-p",
         f"linear: {{x: {linear}}}, angular: {{z: {angular}}}"
     ]
     try:
-        # Run in non-blocking way? No, simple run is fine but might be slow if called often.
-        # Ideally we keep a publisher open, but 'gz topic' is a CLI tool.
-        # We only send if changed or periodically.
+        # Run in non-blocking way
         subprocess.Popen(cmd)
     except Exception as e:
         print(f"Error sending gz command: {e}")
