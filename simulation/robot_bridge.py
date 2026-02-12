@@ -234,23 +234,44 @@ def draw_simulation_frame():
     with sim_lock:
         objects = sim_objects.copy()
         
+    # Find keys to potential robots for tracking
+    target_name = args.robot_name
+    
+    # Auto-discover if not set
+    if not target_name:
+        if "vehicle_blue" in objects: target_name = "vehicle_blue"
+        elif "vehicle_green" in objects: target_name = "vehicle_green"
+        else:
+             for name in objects.keys():
+                if "vehicle" in name:
+                    target_name = name
+                    break
+    
+    # Camera Center Logic (Follow Cam)
+    cam_x, cam_y = 0.0, 0.0
+    if target_name and target_name in objects:
+        cam_x = objects[target_name].get('x', 0.0)
+        cam_y = objects[target_name].get('y', 0.0)
+        
     scale = 20 # Pixels per meter (Zoom level)
     center_x, center_y = 320, 240
     
-    # Debug: Print object count on screen
+    # Debug: Print object count and tracking info
     cv2.putText(frame, f"Objects: {len(objects)}", (10, 460), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1)
-    
+    if target_name:
+        cv2.putText(frame, f"Tracking: {target_name}", (10, 440), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 255), 1)
+
     # Draw logic
     for name, data in objects.items():
         if 'x' not in data or 'y' not in data:
             continue
             
-        # Map Gazebo (X,Y) to Screen (Right, Up)
-        # Gazebo X+ is Forward (Screen Right default)
-        # Gazebo Y+ is Left (Screen Up default)
+        # Rotation: Gazebo X (Forward) -> Screen Up (-Y)
+        #           Gazebo Y (Left)    -> Screen Left (-X)
+        # Result: Forward is Up, Left is Left.
         
-        px = int(center_x + data['x'] * scale)
-        py = int(center_y - data['y'] * scale) # Invert Y for image coords
+        px = int(center_x - rel_y * scale)
+        py = int(center_y - rel_x * scale)
         
         # Color based on name
         color = (200, 200, 200) # Default white-ish
@@ -265,12 +286,19 @@ def draw_simulation_frame():
         
         # Draw Orientation (Heading)
         if 'qw' in data:
-            # We assume qx, qy, qz exist if qw exists based on parser logic
             yaw = quaternion_to_yaw(data.get('qx',0), data.get('qy',0), data.get('qz',0), data['qw'])
             
-            # Draw sticking out line
-            end_x = int(px + 25 * math.cos(yaw))
-            end_y = int(py - 25 * math.sin(yaw)) # Y inverted
+            # Map Yaw to Screen Coordinates
+            # Gazebo 0 rad = X+ (Up on screen)
+            # Screen 0 rad = Right
+            # We need to rotate the angle by -90 deg (-pi/2) to matching mapping or just swap sin/cos
+            
+            # Screen X = -Sin(yaw), Screen Y = -Cos(yaw)
+            dir_x = -math.sin(yaw)
+            dir_y = -math.cos(yaw)
+            
+            end_x = int(px + 25 * dir_x)
+            end_y = int(py + 25 * dir_y)
             
             cv2.line(frame, (px, py), (end_x, end_y), (0, 0, 0), 2)
             
