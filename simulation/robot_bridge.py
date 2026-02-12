@@ -94,10 +94,6 @@ def parse_gazebo_stream(topic):
                 reading_position = False
                 continue
                 
-            if "position {" in line:
-                reading_position = True
-                continue
-                
             if "orientation {" in line:
                 reading_position = False
                 # End of position block for this object
@@ -121,6 +117,47 @@ def parse_gazebo_stream(topic):
         sys.exit(1)
     except Exception as e:
         print(f"❌ Error reading Gazebo stream: {e}")
+
+def execute_gz_command(linear, angular):
+    """
+    Publishes a twist message to /cmd_vel using gz topic.
+    Message format for geometry_msgs/Twist:
+    "linear: {x: 1.0}, angular: {z: 0.5}"
+    """
+    cmd = [
+        "gz", "topic", "-t", "/cmd_vel", "-m",
+        f"linear: {{x: {linear}}}, angular: {{z: {angular}}}"
+    ]
+    try:
+        # Run in non-blocking way? No, simple run is fine but might be slow if called often.
+        # Ideally we keep a publisher open, but 'gz topic' is a CLI tool.
+        # We only send if changed or periodically.
+        subprocess.Popen(cmd)
+    except Exception as e:
+        print(f"Error sending gz command: {e}")
+
+last_command = (0.0, 0.0)
+
+def fetch_and_execute_command():
+    global last_command
+    try:
+        url = f"{API_URL}/robots/{ROBOT_ID}/command"
+        resp = requests.get(url, timeout=1)
+        if resp.status_code == 200:
+            data = resp.json()
+            linear = data.get('linear_x', 0.0)
+            angular = data.get('angular_z', 0.0)
+            
+            # Only send if changed allows for smoother operation if holding button
+            # But the app sends explicit commands. 
+            # Let's send it.
+            if (linear, angular) != last_command:
+                print(f"🚗 Moving: Linear={linear}, Angular={angular}")
+                execute_gz_command(linear, angular)
+                last_command = (linear, angular)
+                
+    except Exception as e:
+        print(f"Command fetch error: {e}")
 
 def draw_simulation_frame():
     """
@@ -179,6 +216,9 @@ def run_simulation_bridge():
             
             # Add timestamp / overlay
             cv2.putText(frame, "SIMULATION FEED", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2)
+            
+            # Fetch pending commands and execute
+            fetch_and_execute_command()
             
             # Upload
             upload_frame(frame)

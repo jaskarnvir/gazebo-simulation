@@ -12,25 +12,47 @@ class ControlsScreen extends StatefulWidget {
 }
 
 class _ControlsScreenState extends State<ControlsScreen> {
-  Timer? _cameraTimer;
   int _refreshKey = 0;
-
   @override
   void initState() {
     super.initState();
-    // Refresh camera every 50ms (~20 FPS) to match backend
-    _cameraTimer = Timer.periodic(const Duration(milliseconds: 50), (timer) {
-      if (mounted) {
-        setState(() {
-          _refreshKey++;
-        });
+    // Start the fetch loop
+    _scheduleNextFrame();
+  }
+
+  void _scheduleNextFrame() async {
+    if (!mounted) return;
+
+    await Future.delayed(const Duration(milliseconds: 200));
+
+    if (!mounted) return;
+
+    final robotProvider = Provider.of<RobotProvider>(context, listen: false);
+    final snapshotUrl = robotProvider.getSnapshotUrl();
+
+    if (snapshotUrl != null) {
+      final nextKey = _refreshKey + 1;
+      final nextImage = NetworkImage('$snapshotUrl?t=$nextKey');
+
+      try {
+        await precacheImage(nextImage, context);
+        if (mounted) {
+          setState(() {
+            _refreshKey = nextKey;
+          });
+        }
+      } catch (e) {
+        // Skip frame on error
+        // print("Error fetching frame: $e");
       }
-    });
+    }
+
+    // Recursive call
+    _scheduleNextFrame();
   }
 
   @override
   void dispose() {
-    _cameraTimer?.cancel();
     super.dispose();
   }
 
@@ -77,14 +99,15 @@ class _ControlsScreenState extends State<ControlsScreen> {
                       ),
                       clipBehavior: Clip.antiAlias,
                       child: snapshotUrl != null
-                          ? Image.network(
-                              '$snapshotUrl?t=$_refreshKey',
+                          ? Image(
+                              image: NetworkImage(
+                                '$snapshotUrl?t=$_refreshKey',
+                              ),
                               key: ValueKey(_refreshKey),
-                              fit: BoxFit
-                                  .contain, // Changed to contain to see full map
-                              gaplessPlayback: true,
+                              fit: BoxFit.contain,
                               width: double.infinity,
                               height: double.infinity,
+                              gaplessPlayback: true, // Still good to have
                               errorBuilder: (context, error, stackTrace) {
                                 return Center(
                                   child: Column(

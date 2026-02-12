@@ -46,11 +46,23 @@ def update_robot_status(robot_id: int, is_online: bool, db: Session = Depends(da
     db.commit()
     return {"status": "updated", "is_online": is_online}
 
+# In-memory storage for the latest command of each robot
+# robot_id -> RobotCommand
+latest_commands = {}
+
 @router.post("/{robot_id}/command")
 def send_command(robot_id: int, command: RobotCommand, current_user: schemas.User = Depends(auth.get_current_user)):
-    # In a real scenario, this would forward via MQTT/ROS bridge
+    # Store the command for the robot to pick up
     print(f"COMMAND to Robot {robot_id}: Linear={command.linear_x}, Angular={command.angular_z}")
+    latest_commands[robot_id] = command
     return {"status": "sent", "command": command}
+
+@router.get("/{robot_id}/command", response_model=RobotCommand)
+def get_command(robot_id: int):
+    # Retrieve the latest command for the robot
+    # Default to stop if no command found
+    command = latest_commands.get(robot_id, RobotCommand(linear_x=0.0, angular_z=0.0))
+    return command
 
 @router.post("/{robot_id}/camera")
 async def upload_camera_frame(robot_id: int, file: UploadFile = File(...)):
