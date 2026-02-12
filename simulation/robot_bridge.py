@@ -124,7 +124,7 @@ def execute_gz_command(linear, angular):
     "linear: {x: 1.0}, angular: {z: 0.5}"
     """
     cmd = [
-        "gz", "topic", "-t", "/cmd_vel", "-m",
+        "gz", "topic", "-t", "/cmd_vel", "-m", "gz.msgs.Twist", "-p",
         f"linear: {{x: {linear}}}, angular: {{z: {angular}}}"
     ]
     try:
