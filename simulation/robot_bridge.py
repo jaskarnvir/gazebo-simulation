@@ -18,6 +18,8 @@ parser.add_argument("--port", type=str, default="8000", help="Server port")
 parser.add_argument("--sim", action="store_true", help="Run in simulation mode (Gazebo)")
 parser.add_argument("--topic", type=str, default="/world/diff_drive/pose/info", help="Gazebo topic to subscribe to")
 parser.add_argument("--id", type=int, default=3, help="Robot ID to use")
+parser.add_argument("--robot_name", type=str, default="", help="Manual override for Gazebo robot name")
+parser.add_argument("--cmd_topic", type=str, default="", help="Manual override for Gazebo cmd_vel topic")
 args = parser.parse_args()
 
 if args.local:
@@ -148,27 +150,38 @@ def execute_gz_command(linear, angular):
     Message format for gz.msgs.Twist:
     "linear: {x: 1.0}, angular: {z: 0.5}"
     """
-    # Attempt to find the robot name from discovered objects
-    robot_name = "vehicle_blue" # Default
-    with sim_lock:
-        for name in sim_objects.keys():
-            if "vehicle" in name:
-                robot_name = name
-                break
+    # Attempt to use provided robot name or find one
+    robot_name = args.robot_name if args.robot_name else "vehicle_blue" # Default
     
-    topic = f"/model/{robot_name}/cmd_vel"
+    if not args.robot_name:
+        with sim_lock:
+            for name in sim_objects.keys():
+                if "vehicle" in name:
+                    robot_name = name
+                    break
+    
+    if args.cmd_topic:
+        topic = args.cmd_topic
+    else:
+        topic = f"/model/{robot_name}/cmd_vel"
     
     cmd = [
         "gz", "topic", "-t", topic, "-m", "gz.msgs.Twist", "-p",
         f"linear: {{x: {linear}}}, angular: {{z: {angular}}}"
     ]
     try:
-        # Run in non-blocking way
-        subprocess.Popen(cmd)
-        # Uncomment for deep debugging:
-        # print(f"Sent {linear},{angular} to {topic}")
+        # Run and capture output for debugging
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=1.0)
+        
+        if result.returncode != 0:
+            print(f"❌ Gazebo Error ({topic}): {result.stderr.strip()}")
+        # else:
+        #     print(f"✅ Sent {linear},{angular} to {topic}")
+
+    except subprocess.TimeoutExpired:
+        print(f"⚠️ Command timed out: {topic}")
     except Exception as e:
-        print(f"Error sending gz command: {e}")
+        print(f"❌ Error sending gz command: {e}")
 
 last_command = (0.0, 0.0)
 
