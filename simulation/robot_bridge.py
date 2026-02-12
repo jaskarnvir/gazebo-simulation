@@ -50,6 +50,14 @@ def upload_frame(frame):
     except Exception as e:
         print(f"Frame upload error: {e}")
 
+def quaternion_to_yaw(x, y, z, w):
+    """
+    Convert quaternion to yaw (rotation around Z axis).
+    """
+    t3 = +2.0 * (w * z + x * y)
+    t4 = +1.0 - 2.0 * (y * y + z * z)
+    return math.atan2(t3, t4)
+
 def parse_gazebo_stream(topic):
     """
     Reads Gazebo topic output line by line and updates sim_objects.
@@ -68,8 +76,10 @@ def parse_gazebo_stream(topic):
         x_pattern = re.compile(r'x:\s*(.*)')
         y_pattern = re.compile(r'y:\s*(.*)')
         z_pattern = re.compile(r'z:\s*(.*)')
+        w_pattern = re.compile(r'w:\s*(.*)')
         
         reading_position = False
+        reading_orientation = False
         
         while True:
             # Read line-by-line using readline() to better handle streams
@@ -85,22 +95,21 @@ def parse_gazebo_stream(topic):
             if m_name:
                 current_object = {'name': m_name.group(1)}
                 reading_position = False
+                reading_orientation = False
                 continue
 
             # Check for position block
             if "position {" in line:
                 reading_position = True
+                reading_orientation = False
                 continue
                 
-            # Check for orientation block (End of position data)
+            # Check for orientation block
             if "orientation {" in line:
                 reading_position = False
-                if 'name' in current_object and 'x' in current_object:
-                    with sim_lock:
-                        sim_objects[current_object['name']] = current_object.copy()
-                        # print(f"Updated {current_object['name']}", flush=True)
+                reading_orientation = True
                 continue
-                
+            
             if reading_position:
                 m_x = x_pattern.search(line)
                 if m_x: current_object['x'] = float(m_x.group(1))
@@ -110,6 +119,21 @@ def parse_gazebo_stream(topic):
                 
                 m_z = z_pattern.search(line)
                 if m_z: current_object['z'] = float(m_z.group(1))
+
+            if reading_orientation:
+                m_x = x_pattern.search(line)
+                if m_x: current_object['qx'] = float(m_x.group(1))
+                m_y = y_pattern.search(line)
+                if m_y: current_object['qy'] = float(m_y.group(1))
+                m_z = z_pattern.search(line)
+                if m_z: current_object['qz'] = float(m_z.group(1))
+                m_w = w_pattern.search(line)
+                if m_w: current_object['qw'] = float(m_w.group(1))
+                
+                # If we have all pieces, update global state
+                if 'name' in current_object and 'x' in current_object and 'qw' in current_object:
+                     with sim_lock:
+                        sim_objects[current_object['name']] = current_object.copy()
 
     except FileNotFoundError:
         print("❌ 'gz' command not found. Is Gazebo installed and in PATH?", flush=True)
@@ -164,19 +188,15 @@ def fetch_and_execute_command():
 
 def draw_simulation_frame():
     """
-    Draws a 2D top-down map of the simulation objects.
-    """
-    # Create a black background 640x480
-    height, width = 480, 640
-    frame = np.zeros((height, width, 3), dtype=np.uint8)
-    
-    # Scale factor (pixels per meter)
-    scale = 50
-    center_x, center_y = width // 2, height // 2
+    # Create black canvas
+    frame = np.zeros((480, 640, 3), dtype=np.uint8)
     
     with sim_lock:
         objects = sim_objects.copy()
         
+    scale = 20 # Pixels per meter (Zoom level)
+    center_x, center_y = 320, 240
+    
     # Debug: Print object count on screen
     cv2.putText(frame, f"Objects: {len(objects)}", (10, 460), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1)
     
@@ -185,21 +205,35 @@ def draw_simulation_frame():
         if 'x' not in data or 'y' not in data:
             continue
             
-        # Convert world pos to pixel pos
-        # Gazebo: X right, Y up (usually). OpenCV: X right, Y down.
-        # We'll map Gazebo (0,0) to center.
+        # Map Gazebo (X,Y) to Screen (Right, Up)
+        # Gazebo X+ is Forward (Screen Right default)
+        # Gazebo Y+ is Left (Screen Up default)
+        
         px = int(center_x + data['x'] * scale)
         py = int(center_y - data['y'] * scale) # Invert Y for image coords
         
         # Color based on name
         color = (200, 200, 200) # Default white-ish
-        if "box" in name: color = (0, 0, 255) # Red
+        if "vehicle" in name or "blue" in name: color = (0, 215, 255) # Gold/Orange
+        elif "box" in name: color = (0, 0, 255) # Red
         elif "cylinder" in name: color = (255, 0, 0) # Blue
         elif "sphere" in name: color = (0, 255, 0) # Green
         elif "ground" in name: continue # Don't draw ground plane
         
         # Draw circle for object
         cv2.circle(frame, (px, py), 15, color, -1)
+        
+        # Draw Orientation (Heading)
+        if 'qw' in data:
+            # We assume qx, qy, qz exist if qw exists based on parser logic
+            yaw = quaternion_to_yaw(data.get('qx',0), data.get('qy',0), data.get('qz',0), data['qw'])
+            
+            # Draw sticking out line
+            end_x = int(px + 25 * math.cos(yaw))
+            end_y = int(py - 25 * math.sin(yaw)) # Y inverted
+            
+            cv2.line(frame, (px, py), (end_x, end_y), (0, 0, 0), 2)
+            
         # Draw label
         cv2.putText(frame, name, (px + 10, py), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
         
