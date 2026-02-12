@@ -53,52 +53,52 @@ def upload_frame(frame):
 def parse_gazebo_stream(topic):
     """
     Reads Gazebo topic output line by line and updates sim_objects.
-    Output format example:
-    pose {
-      name: "box"
-      id: 8
-      position {
-        x: -0.5
-        y: 2.7
-        z: 0.1
-      }
-      ...
-    }
     """
     cmd = ["gz", "topic", "-e", "-t", topic]
-    print(f"🔌 Subscribing to Gazebo topic: {topic}")
+    print(f"🔌 Subscribing to Gazebo topic: {topic}", flush=True)
     
     try:
+        # Use a new process with default text buffering
         process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
         
         current_object = {}
         
-        # Regex patterns
-        name_pattern = re.compile(r'name: "(.*)"')
-        pos_point_pattern = re.compile(r'position\s*{')
-        x_pattern = re.compile(r'x: (.*)')
-        y_pattern = re.compile(r'y: (.*)')
-        z_pattern = re.compile(r'z: (.*)')
+        # Regex patterns - flexible with whitespace
+        name_pattern = re.compile(r'name:\s*\"(.*)\"')
+        x_pattern = re.compile(r'x:\s*(.*)')
+        y_pattern = re.compile(r'y:\s*(.*)')
+        z_pattern = re.compile(r'z:\s*(.*)')
         
         reading_position = False
         
-        for line in process.stdout:
+        while True:
+            # Read line-by-line using readline() to better handle streams
+            line = process.stdout.readline()
+            if not line:
+                break
+                
             line = line.strip()
+            # print(f"DEBUG: {line}", flush=True) # Uncomment if still stuck
             
-            # Start of a new pose block usually implied, but here we scan for fields
-            # Check name
+            # Check for name (Start of new object usually)
             m_name = name_pattern.search(line)
             if m_name:
-                # Save previous object if complete (simplified logic)
                 current_object = {'name': m_name.group(1)}
                 reading_position = False
                 continue
+
+            # Check for position block
+            if "position {" in line:
+                reading_position = True
+                continue
                 
+            # Check for orientation block (End of position data)
+            if "orientation {" in line:
+                reading_position = False
                 if 'name' in current_object and 'x' in current_object:
-                    # debug print
-                    # print(f"Updates {current_object['name']}")
                     with sim_lock:
                         sim_objects[current_object['name']] = current_object.copy()
+                        # print(f"Updated {current_object['name']}", flush=True)
                 continue
                 
             if reading_position:
@@ -112,10 +112,10 @@ def parse_gazebo_stream(topic):
                 if m_z: current_object['z'] = float(m_z.group(1))
 
     except FileNotFoundError:
-        print("❌ 'gz' command not found. Is Gazebo installed and in PATH?")
+        print("❌ 'gz' command not found. Is Gazebo installed and in PATH?", flush=True)
         sys.exit(1)
     except Exception as e:
-        print(f"❌ Error reading Gazebo stream: {e}")
+        print(f"❌ Error reading Gazebo stream: {e}", flush=True)
 
 def execute_gz_command(linear, angular):
     """
