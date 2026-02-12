@@ -7,6 +7,7 @@ import subprocess
 import re
 import numpy as np
 import argparse
+import math
 
 # Configuration
 # Use the Cloud Run URL or localhost if testing locally
@@ -143,12 +144,19 @@ def parse_gazebo_stream(topic):
 
 def execute_gz_command(linear, angular):
     """
-    Publishes a twist message to /model/vehicle_blue/cmd_vel using gz topic.
+    Publishes a twist message to /model/<robot_name>/cmd_vel using gz topic.
     Message format for gz.msgs.Twist:
     "linear: {x: 1.0}, angular: {z: 0.5}"
     """
-    # TOPIC for the Blue Robot
-    topic = "/model/vehicle_blue/cmd_vel" 
+    # Attempt to find the robot name from discovered objects
+    robot_name = "vehicle_blue" # Default
+    with sim_lock:
+        for name in sim_objects.keys():
+            if "vehicle" in name:
+                robot_name = name
+                break
+    
+    topic = f"/model/{robot_name}/cmd_vel"
     
     cmd = [
         "gz", "topic", "-t", topic, "-m", "gz.msgs.Twist", "-p",
@@ -157,6 +165,8 @@ def execute_gz_command(linear, angular):
     try:
         # Run in non-blocking way
         subprocess.Popen(cmd)
+        # Uncomment for deep debugging:
+        # print(f"Sent {linear},{angular} to {topic}")
     except Exception as e:
         print(f"Error sending gz command: {e}")
 
@@ -187,7 +197,7 @@ def fetch_and_execute_command():
         print(f"Command fetch error: {e}")
 
 def draw_simulation_frame():
-    """
+
     # Create black canvas
     frame = np.zeros((480, 640, 3), dtype=np.uint8)
     
@@ -266,7 +276,9 @@ def run_simulation_bridge():
             
             # Heartbeat
             if time.time() - last_heartbeat > 10:
-                print("\n💓 Heartbeat sent")
+                with sim_lock:
+                    obj_names = list(sim_objects.keys())
+                print(f"\n💓 Heartbeat sent. Visible Objects: {obj_names}")
                 send_heartbeat(True)
                 last_heartbeat = time.time()
                 
@@ -310,7 +322,9 @@ def run_camera_bridge():
             
             # Heartbeat
             if time.time() - last_heartbeat > 10:
-                print("\n💓 Heartbeat sent")
+                with sim_lock:
+                    obj_names = list(sim_objects.keys())
+                print(f"\n💓 Heartbeat sent. Visible Objects: {obj_names}")
                 send_heartbeat(True)
                 last_heartbeat = time.time()
             
