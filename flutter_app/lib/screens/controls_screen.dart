@@ -79,9 +79,10 @@ class _ControlsScreenState extends State<ControlsScreen> {
                       child: snapshotUrl != null
                           ? Image.network(
                               '$snapshotUrl?t=$_refreshKey',
-                              key: ValueKey(_refreshKey), // Force rebuild
-                              fit: BoxFit.cover,
-                              gaplessPlayback: true, // Prevents flickering
+                              key: ValueKey(_refreshKey),
+                              fit: BoxFit
+                                  .contain, // Changed to contain to see full map
+                              gaplessPlayback: true,
                               width: double.infinity,
                               height: double.infinity,
                               errorBuilder: (context, error, stackTrace) {

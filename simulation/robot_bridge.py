@@ -16,6 +16,7 @@ parser.add_argument("--ip", type=str, default="40.233.116.73", help="Server IP a
 parser.add_argument("--port", type=str, default="8000", help="Server port")
 parser.add_argument("--sim", action="store_true", help="Run in simulation mode (Gazebo)")
 parser.add_argument("--topic", type=str, default="/world/shapes/pose/info", help="Gazebo topic to subscribe to")
+parser.add_argument("--id", type=int, default=3, help="Robot ID to use")
 args = parser.parse_args()
 
 if args.local:
@@ -23,7 +24,7 @@ if args.local:
 else:
     API_URL = f"http://{args.ip}:{args.port}"
 
-ROBOT_ID = 3 
+ROBOT_ID = args.id 
 SERIAL_NUMBER = "MIRO-12345"
 
 # Global state for simulation objects
