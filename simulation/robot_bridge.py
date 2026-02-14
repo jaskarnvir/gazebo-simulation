@@ -74,15 +74,16 @@ def parse_gazebo_stream(topic):
         
         current_object = {}
         
-        # Regex patterns - flexible with whitespace
-        name_pattern = re.compile(r'name:\s*\"(.*)\"')
-        x_pattern = re.compile(r'x:\s*(.*)')
-        y_pattern = re.compile(r'y:\s*(.*)')
-        z_pattern = re.compile(r'z:\s*(.*)')
-        w_pattern = re.compile(r'w:\s*(.*)')
+        # Regex patterns - flexible with whitespace and optional quotes
+        name_pattern = re.compile(r'name:\s*\"?([^\"\n]+)\"?')
+        x_pattern = re.compile(r'x:\s*([0-9\.\-eE]+)')
+        y_pattern = re.compile(r'y:\s*([0-9\.\-eE]+)')
+        z_pattern = re.compile(r'z:\s*([0-9\.\-eE]+)')
+        w_pattern = re.compile(r'w:\s*([0-9\.\-eE]+)')
         
         reading_position = False
         reading_orientation = False
+        line_count = 0
         
         while True:
             # Read line-by-line using readline() to better handle streams
@@ -91,12 +92,17 @@ def parse_gazebo_stream(topic):
                 break
                 
             line = line.strip()
-            # print(f"DEBUG: {line}", flush=True) # Uncomment if still stuck
+            line_count += 1
             
+            # Debug: Print raw lines if we aren't finding anything
+            if len(sim_objects) == 0 and line_count < 100:
+                 print(f"RAW GZ: {line}", flush=True)
+
             # Check for name (Start of new object usually)
             m_name = name_pattern.search(line)
             if m_name:
-                current_object = {'name': m_name.group(1)}
+                raw_name = m_name.group(1).strip('"') # Strip quotes manually to be safe
+                current_object = {'name': raw_name}
                 reading_position = False
                 reading_orientation = False
                 continue
